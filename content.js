@@ -1,214 +1,223 @@
-import Vue from 'vue';
-import App from './Vue/App';
-import Tip from "./Vue/Tip.plugin";
-import i18n, { setupLang } from "./locales";
+import Vue from 'vue'
+import App from './Vue/App'
+import Tip from './Vue/Tip.plugin'
+import i18n, { setupLang } from './locales'
 
-Vue.use(Tip);
+Vue.use(Tip)
 
-const app = function () {
-	let vm,
-		uiCreated = false,
-		appState = 'stopped',
-		cspBlockedBlob = -1;
+const app = (function () {
+  let vm,
+    uiCreated = false,
+    appState = 'stopped',
+    cspBlockedBlob = -1
 
-	return {
-		init() {
-			chrome.runtime.onMessage.addListener((request, sender, cb) => {
-				let { type, data } = request;
+  return {
+    init() {
+      chrome.runtime.onMessage.addListener((request, sender, cb) => {
+        let { type, data } = request
 
-				switch (type) {
-					case 'insertImg':
-						chrome.storage.local.remove(['_viData', '_viDataUrl', '_url']);
-						if (vm && vm.src && cspBlockedBlob === 0) window.URL.revokeObjectURL(vm.src);
+        switch (type) {
+          case 'insertImg':
+            chrome.storage.local.remove(['_viData', '_viDataUrl', '_url'])
+            if (vm && vm.src && cspBlockedBlob === 0) window.URL.revokeObjectURL(vm.src)
 
-						this.run(data);
-						cb({ type, state: true });
-						break;
-					case 'quit':
-						this.quit();
-						cb({ type, state: false });
-						break;
-					case 'getAppStateFromBg':
-						cb({ type, state: true });
-						break;
-					case 'getAppStateFromPopup':
-						cb({ type, state: true });
-						break;
-					case 'appState':
-						if (data.lang) setupLang(data.lang);
-						cb({ type, data: { state: appState } });
-						break;
-					case 'changeLang':
-						setupLang(data.lang);
-						cb({ type, data: { lang: data.lang } });
-				}
+            this.run(data)
+            cb({ type, state: true })
+            break
+          case 'quit':
+            this.quit()
+            cb({ type, state: false })
+            break
+          case 'getAppStateFromBg':
+            cb({ type, state: true })
+            break
+          case 'getAppStateFromPopup':
+            cb({ type, state: true })
+            break
+          case 'appState':
+            if (data.lang) setupLang(data.lang)
+            cb({ type, data: { state: appState } })
+            break
+          case 'changeLang':
+            setupLang(data.lang)
+            cb({ type, data: { lang: data.lang } })
+        }
 
-				return true;
-			});
+        return true
+      })
 
-			this.send({ type: 'appLoaded' });
+      this.send({ type: 'appLoaded' })
 
-			chrome.storage.local.get(['_viData', '_viDataUrl', '_url'], ({ _viData, _viDataUrl, _url }) => {
-				if (_url === location.href && _viData && _viDataUrl) {
-					let viData = JSON.parse(_viData);
-					let dataUrl = _viDataUrl;
-					this.getLang().then(lang => {
-						setupLang(lang);
-						this.run({ dataUrl, ...viData });
-					})
-				}
-			});
+      chrome.storage.local.get(['_viData', '_viDataUrl', '_url'], ({ _viData, _viDataUrl, _url }) => {
+        if (_url === location.href && _viData && _viDataUrl) {
+          let viData = JSON.parse(_viData)
+          let dataUrl = _viDataUrl
+          this.getLang().then((lang) => {
+            setupLang(lang)
+            this.run({ dataUrl, ...viData })
+          })
+        }
+      })
 
+      // can not detect first ???
+      // this.checkCSPForGlob()
+      // 	.then(()=>{
+      // 		console.log('not blocked')
+      // 		cspBlockedBlob = false;
+      // 	}, ()=>{
+      // 		console.log('blocked')
+      // 		cspBlockedBlob = true;
+      // 	})
+    },
 
-			// can not detect first ???
-			// this.checkCSPForGlob()
-			// 	.then(()=>{
-			// 		console.log('not blocked')
-			// 		cspBlockedBlob = false;
-			// 	}, ()=>{
-			// 		console.log('blocked')
-			// 		cspBlockedBlob = true;
-			// 	})
-		},
+    checkScale() {
+      const metaEl = document.querySelector('meta[name="viewport"]')
+      let scale = 1
+      if (metaEl) {
+        var match = metaEl.getAttribute('content').match(/initial\-scale=([\d\.]+)/)
+        if (match) scale = parseFloat(match[1])
+      }
+      return scale
+    },
 
-		checkScale() {
-			const metaEl = document.querySelector('meta[name="viewport"]');
-			let scale = 1;
-			if (metaEl) {
-				var match = metaEl.getAttribute('content').match(/initial\-scale=([\d\.]+)/);
-				if (match) scale = parseFloat(match[1]);
-			}
-			return scale
-		},
+    getLang() {
+      return new Promise((resolve) => {
+        chrome.storage.local.get({ lang: 'cn' }, (data) => {
+          resolve(data.lang)
+        })
+      })
+    },
 
-		getLang() {
-			return new Promise(resolve => {
-				chrome.storage.local.get({ lang: 'cn' }, data => {
-					resolve(data.lang);
-				});
-			})
-		},
+    async getImgSrc(dataUrl) {
+      if (cspBlockedBlob === 1) return dataUrl
+      else if (cspBlockedBlob === 0) {
+        let blobObj = this.dataURLtoBlob(dataUrl)
+        return window.URL.createObjectURL(blobObj)
+      }
 
-		async getImgSrc(dataUrl) {
-			if (cspBlockedBlob === 1) return dataUrl;
-			else if (cspBlockedBlob === 0) {
-				let blobObj = this.dataURLtoBlob(dataUrl);
-				return window.URL.createObjectURL(blobObj);
-			}
+      try {
+        let d = await this.checkCSPForGlob(dataUrl)
+        cspBlockedBlob = 0
+        return d
+      } catch (err) {
+        cspBlockedBlob = 1
+        return dataUrl
+      }
+    },
 
-			try {
-				let d = await this.checkCSPForGlob(dataUrl);
-				cspBlockedBlob = 0;
-				return d;
-			} catch (err) {
-				cspBlockedBlob = 1;
-				return dataUrl;
-			}
-		},
-
-		checkCSPForGlob(dataUrl) {
-			return new Promise((resolve, reject) => {
-				let handleCspOnce = function (e) {
-					if (e.blockedURI === 'blob' && e.violatedDirective === 'img-src') reject();
-					document.removeEventListener("securitypolicyviolation", handleCspOnce);
-					div.remove();
-				};
-				let blobObj = this.dataURLtoBlob(dataUrl);
-				let url = window.URL.createObjectURL(blobObj);
-				let div = document.createElement('div');
-				div.style.cssText = `
+    checkCSPForGlob(dataUrl) {
+      return new Promise((resolve, reject) => {
+        let handleCspOnce = function (e) {
+          if (e.blockedURI === 'blob' && e.violatedDirective === 'img-src') reject()
+          document.removeEventListener('securitypolicyviolation', handleCspOnce)
+          div.remove()
+        }
+        let blobObj = this.dataURLtoBlob(dataUrl)
+        let url = window.URL.createObjectURL(blobObj)
+        let div = document.createElement('div')
+        div.style.cssText = `
 					display:none;
 					width: 100px;
 					height: 100px;
 					background: url(${url});
-				`;
-				document.body.appendChild(div);
-				document.addEventListener("securitypolicyviolation", handleCspOnce);
-				setTimeout(function () {
-					div.remove();
-					resolve(url)
-				}, 200);
-			})
-		},
+				`
+        document.body.appendChild(div)
+        document.addEventListener('securitypolicyviolation', handleCspOnce)
+        setTimeout(function () {
+          div.remove()
+          resolve(url)
+        }, 200)
+      })
+    },
 
-		dataURLtoBlob(dataUrl) {
-			let arr = dataUrl.split(','), mime = arr[0].match(/:(.*?);/)[1],
-				bstr = atob(arr[1]), n = bstr.length, u8arr = new Uint8Array(n);
-			while (n--) u8arr[n] = bstr.charCodeAt(n);
-			return new Blob([u8arr], { type: mime });
-		},
+    dataURLtoBlob(dataUrl) {
+      let arr = dataUrl.split(','),
+        mime = arr[0].match(/:(.*?);/)[1],
+        bstr = atob(arr[1]),
+        n = bstr.length,
+        u8arr = new Uint8Array(n)
+      while (n--) u8arr[n] = bstr.charCodeAt(n)
+      return new Blob([u8arr], { type: mime })
+    },
 
-		async run({ dataUrl, ...data }) {
-			let src = await this.getImgSrc(dataUrl);
+    async run({ dataUrl, ...data }) {
+      let src = await this.getImgSrc(dataUrl)
 
-			if (vm) {
-				vm.src = src;
-			} else {
-				window.appRoot = document.createElement('div');
-				let appShadow = window.appRoot.attachShadow({ mode: 'open' });
+      if (vm) {
+        vm.src = src
+      } else {
+        window.appRoot = document.createElement('div')
+        let appShadow = window.appRoot.attachShadow({ mode: 'open' })
 
-				this.createUI(src, data);
+        this.createUI(src, data)
 
-				appShadow.appendChild(vm.$el);
-				document.body.appendChild(window.appRoot);
-			}
+        appShadow.appendChild(vm.$el)
+        document.body.appendChild(window.appRoot)
+      }
 
-			vm.$el.style.zoom = this.checkScale();
+      vm.$el.style.zoom = this.checkScale()
 
-			chrome.storage.local.set({ _viDataUrl: dataUrl, _url: location.href })
-		},
+      chrome.storage.local.set({ _viDataUrl: dataUrl, _url: location.href })
+    },
 
-		quit() {
-			if (appState === 'running') {
-				vm.destroy();
-				window.appRoot.remove();
-				delete window.appRoot;
-			}
-		},
+    quit() {
+      if (appState === 'running') {
+        vm.destroy()
+        window.appRoot.remove()
+        delete window.appRoot
+      }
+    },
 
-		createUI(src, restoredData = {}) {
-			if (!uiCreated) {
-				vm = new Vue({
-					data: { src, restoredData },
-					el: document.createElement('div'),
-					template: `<App :class="lang" :src = "src" :restoredData="restoredData"/>`,
-					computed: {
-						lang() {
-							return 'vi_lang_' + this.$i18n.locale
-						}
-					},
-					i18n,
-					beforeDestroy() {
-						uiCreated = false;
-						appState = 'stopped';
-						cspBlockedBlob === 0 && window.URL.revokeObjectURL(vm.src);
-						vm.$el.remove();
-					},
-					created() {
-						uiCreated = true;
-						appState = 'running';
-					},
-					methods: {
-						destroy() {
-							this.$destroy();
-							vm = null;
-						}
-					},
-					components: { App }
-				});
-			}
+    createUI(src, restoredData = {}) {
+      if (!uiCreated) {
+        vm = new Vue({
+          data: { src, restoredData },
+          el: document.createElement('div'),
+          render(h) {
+            return h(App, {
+              class: this.lang,
+              props: {
+                src: this.src,
+                restoredData: this.restoredData,
+              },
+            })
+          },
+          computed: {
+            lang() {
+              return 'vi_lang_' + this.$i18n.locale
+            },
+          },
+          i18n,
+          beforeDestroy() {
+            uiCreated = false
+            appState = 'stopped'
+            cspBlockedBlob === 0 && window.URL.revokeObjectURL(vm.src)
+            vm.$el.remove()
+          },
+          created() {
+            uiCreated = true
+            appState = 'running'
+          },
+          methods: {
+            destroy() {
+              this.$destroy()
+              vm = null
+            },
+          },
+          components: { App },
+        })
+      }
 
-			return vm;
-		},
+      return vm
+    },
 
-		send(data) {
-			chrome.runtime.sendMessage(data);
-		}
-	}
-}();
+    send(data) {
+      chrome.runtime.sendMessage(data)
+    },
+  }
+})()
 
-app.init();
-
+app.init()
 
 // chrome.webRequest.onBeforeRequest.addListener(
 // 	function (details) {

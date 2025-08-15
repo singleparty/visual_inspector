@@ -4,8 +4,8 @@
   "description": "A helper tool for fast web page development, visual inspection and restoration.",
   "main": "content.js",
   "scripts": {
-    "start": "webpack --watch",
-    "build": "cross-env NODE_ENV=production webpack"
+    "start": "cross-env NODE_OPTIONS=--openssl-legacy-provider webpack --watch",
+    "build": "cross-env NODE_OPTIONS=--openssl-legacy-provider NODE_ENV=production webpack"
   },
   "keywords": [
     "visual",

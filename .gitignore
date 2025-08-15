@@ -11,3 +11,4 @@ temp/
 .vscode
 src/
 build/
+.DS_Store
