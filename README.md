@@ -13,6 +13,8 @@
 
 > 预置了常用命令的快捷键，更加方便的操作和比对
 
+### 2.0.0 适配 Chrome 插件 Manifest V3
+
 ### 新版(1.3.9+)去掉了测量功能，如果需要请安装测量插件，如：[better ruler](https://chrome.google.com/webstore/detail/better-ruler/ilcnadaaninblgbekoaihdhoiecaflie),支持吸附测量。
 
 ### 快捷键:
